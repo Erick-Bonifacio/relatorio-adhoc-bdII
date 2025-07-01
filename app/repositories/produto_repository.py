@@ -73,7 +73,7 @@ class ProdutoRepository:
         self.db.commit()
         return True
 
-    def get_filtered(self, tables: list, columns: list, aggregations: dict, filters: list):
+    def get_filtered(self, tables: list, columns: list, aggregations: dict, filters: list, limit, order_by):
         base_table = Produto
         stmt = select()
 
@@ -83,7 +83,7 @@ class ProdutoRepository:
             for col_str in columns:
                 try:
                     col, val = self._resolve_column(col_str)
-                    col_objs.append(col)
+                    col_objs.append(col.label(col_str))
                 except Exception as e:
                     raise Exception(f"[WARN] Coluna inválida '{col_str}': {e}")
 
@@ -119,12 +119,24 @@ class ProdutoRepository:
 
         # --- Filtros ---
         if filters:
-            filter_exprs = [self._resolve_filter(f) for f in filters]
-            stmt = stmt.where(and_(*filter_exprs))
+            stmt = stmt.where(self._build_filter_expression(filters))
 
         # --- Agrupamento ---
         if aggregations and col_objs:
             stmt = stmt.group_by(*col_objs)
+
+        # --- ORDER BY ---
+        if order_by:
+            try:
+                col, _ = self._resolve_column(order_by)
+                stmt = stmt.order_by(col)
+            except Exception as e:
+                raise Exception(f"[WARN] ORDER BY inválido '{order_by}': {e}")
+
+        # --- LIMIT ---
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
 
         # --- Execução ---
         try:
@@ -133,7 +145,7 @@ class ProdutoRepository:
             return [dict(r) for r in rows]
         except Exception as e:
             print(f"[ERRO get_filtered]: {e}")
-            return []
+            return False
 
 
 
@@ -166,7 +178,6 @@ class ProdutoRepository:
             except Exception as e:
                 raise ValueError(f"[Enum] Valor '{val}' inválido para enum {enum_class}: {e}")
 
-
         if op == "=":
             return col == val
         elif op == ">":
@@ -179,3 +190,36 @@ class ProdutoRepository:
             return col.ilike(val)
         else:
             raise ValueError(f"Operador não suportado: {op}")
+
+    # def _build_filter_expression(self, filter_block):
+    #     if "logic" in filter_block:
+    #         logic_op = filter_block["logic"].lower()
+    #         filters = [self._build_filter_expression(f) for f in filter_block["filters"]]
+
+    #         if logic_op == "and":
+    #             return and_(*filters)
+    #         elif logic_op == "or":
+    #             return or_(*filters)
+    #         else:
+    #             raise ValueError(f"Operador lógico não suportado: {logic_op}")
+    #     else:
+    #         return self._resolve_filter(filter_block)
+
+    def _build_filter_expression(self, filters):
+        if not filters:
+            return None
+
+        expr = self._resolve_filter(filters[0])  # primeiro filtro não depende de lógica
+
+        for f in filters[1:]:
+            logic_op = f.get("logic", "and").lower()  # padrão AND se não vier
+            next_expr = self._resolve_filter(f)
+
+            if logic_op == "and":
+                expr = and_(expr, next_expr)
+            elif logic_op == "or":
+                expr = or_(expr, next_expr)
+            else:
+                raise ValueError(f"Operador lógico não suportado: {logic_op}")
+
+        return expr
