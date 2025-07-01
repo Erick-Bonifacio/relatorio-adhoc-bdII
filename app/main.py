@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify #type: ignore
 from flask_cors import CORS #type: ignore
-from app.controllers.controller import prod
+from controllers.controller import prod
 
 app = Flask(__name__)
 

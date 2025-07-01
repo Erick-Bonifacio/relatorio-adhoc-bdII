@@ -18,8 +18,30 @@ def get_products():
     if product_list:
         return jsonify([p.to_dict() for p in product_list]), 200 
     
-    return jsonify('Erro ao retornar produtos'), 400
+    return jsonify('Internal error in solving your request'), 400
 
-@prod.route("/get-result-filtered", method=["POST"])
+@prod.route("/get-result-filtered", methods=["POST"])
 def get_result_filtered():
-    pass
+    db = next(getDBSession())
+
+    data = request.json
+    tables = data.get('tables')
+    columns = data.get('columns')
+    agregations = data.get('agregations')
+    filters = data.get('filters')
+
+    if not tables  or not filters:
+        return jsonify('Missing required fields'), 400
+    
+    # Se tiver a tabela produtos, será usada como principal
+    if 'produto' in tables:
+        product = ProdutoRepository(db)
+        prodService = ProdutoService(product)
+        res = prodService.get_filtered(tables, columns, agregations, filters) 
+        if res:
+            return jsonify(res), 200
+        return jsonify('Erro ao filtrar dados'), 400
+    return jsonify('Erro ao filtrar dados'), 400
+
+    
+
